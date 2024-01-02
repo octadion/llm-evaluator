@@ -6,6 +6,7 @@ from nltk.translate.bleu_score import (
 import streamlit as st
 from nltk.translate.meteor_score import meteor_score
 import numpy as np
+import base64
 from nltk.stem.porter import PorterStemmer
 from nltk.corpus import wordnet
 import nltk
@@ -70,13 +71,13 @@ def calc_meteor(references, hypothesis):
         reference.append([ref_text.split() for ref_text in ref.splitlines()])
         hypo.append(hyp.split())
         meteor_score_sentences_list = list()
-        [
-            meteor_score_sentences_list.append(meteor_score(expect, predict))
-            for expect, predict in zip(reference, hypo)
-        ]
+        for expect, predict in zip(reference, hypo):
+            score = meteor_score(expect, predict)
+            meteor_score_sentences_list.append(score)
         meteor_score_res = float(np.mean(meteor_score_sentences_list))
         meteor.append(meteor_score_res)
     return meteor
+
 def evaluate(file_input, weights, smoothing_function,
              auto_reweigh):
     df = pd.read_csv(file_input)
@@ -88,6 +89,12 @@ def evaluate(file_input, weights, smoothing_function,
     print(meteor_score)
     print(bleu_score)
     return df, bleu_score, meteor_score
+def create_download_link(df, title="Download CSV file", filename="data.csv"):
+    csv = df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode())
+    payload = b64.decode()
+    html = f'<a download="{filename}" href="data:text/csv;base64,{payload}" target="_blank">{title}</a>'
+    return html
 
 with st.form("corpus_level_file_upload", clear_on_submit=True):
     file_input = st.file_uploader("Upload CSV", type=['csv'])
@@ -95,8 +102,7 @@ with st.form("corpus_level_file_upload", clear_on_submit=True):
 
     if submit_button:
         if file_input is not None:
-            df, bleu_score, meteor_score = evaluate(file_input, weights, smoothing_function,
-             auto_reweigh)
+            df, bleu_score, meteor_score = evaluate(file_input, weights, smoothing_function, auto_reweigh)
             df['bleu_score'] = bleu_score
             df['meteor_score'] = meteor_score
             st.dataframe(df, use_container_width=True)
@@ -104,6 +110,10 @@ with st.form("corpus_level_file_upload", clear_on_submit=True):
             avg_meteor = sum(meteor_score) / len(meteor_score)
             st.write(f"Rata-rata skor BLEU keseluruhan: {avg_bleu:.2f}")
             st.write(f"Rata-rata skor Meteor keseluruhan: {avg_meteor:.2f}")
+            avg = {'bleu_score': f"Rata-rata skor BLEU keseluruhan: {avg_bleu:.2f}",
+                      'meteor_score': f"Rata-rata skor Meteor keseluruhan: {avg_meteor:.2f}"}
+            df = pd.concat([df, pd.DataFrame([avg])], ignore_index=True)
+            st.markdown(create_download_link(df), unsafe_allow_html=True)
 
 def app():
     st.title('Score for file upload')
